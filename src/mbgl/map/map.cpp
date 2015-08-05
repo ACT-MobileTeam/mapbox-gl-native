@@ -120,8 +120,8 @@ void Map::setGestureInProgress(bool inProgress) {
 
 #pragma mark -
 
-void Map::easeTo(CameraOptions options, const Duration& duration) {
-    transform->easeTo(options, duration);
+void Map::easeTo(CameraOptions options) {
+    transform->easeTo(options);
     update();
 }
 
@@ -132,8 +132,8 @@ void Map::moveBy(double dx, double dy, const Duration& duration) {
     update();
 }
 
-void Map::setLatLng(LatLng latLng, const Duration& duration) {
-    transform->setLatLng(latLng, duration);
+void Map::setLatLng(LatLng latLng, CameraOptions options) {
+    transform->setLatLng(latLng, options);
     update();
 }
 
@@ -174,8 +174,8 @@ double Map::getZoom() const {
     return transform->getZoom();
 }
 
-void Map::setLatLngZoom(LatLng latLng, double zoom, const Duration& duration) {
-    transform->setLatLngZoom(latLng, zoom, duration);
+void Map::setLatLngZoom(LatLng latLng, double zoom, CameraOptions options) {
+    transform->setLatLngZoom(latLng, zoom, options);
     update(Update::Zoom);
 }
 
@@ -225,7 +225,9 @@ void Map::fitBounds(AnnotationSegment segment, EdgeInsets padding, const Duratio
     vec2<> centerPixel = (paddedNEPixel + paddedSWPixel) * 0.5;
     LatLng centerLatLng = latLngForPixel(centerPixel);
 
-    setLatLngZoom(centerLatLng, zoom, duration);
+    CameraOptions options;
+    options.duration = duration;
+    setLatLngZoom(centerLatLng, zoom, options);
 }
 
 void Map::resetZoom() {
@@ -260,7 +262,9 @@ void Map::rotateBy(double sx, double sy, double ex, double ey, const Duration& d
 }
 
 void Map::setBearing(double degrees, const Duration& duration) {
-    transform->setAngle(-degrees * M_PI / 180, duration);
+    CameraOptions options;
+    options.duration = duration;
+    transform->setAngle(-degrees * M_PI / 180, options);
     update();
 }
 
@@ -274,7 +278,9 @@ double Map::getBearing() const {
 }
 
 void Map::resetNorth() {
-    transform->setAngle(0, std::chrono::milliseconds(500));
+    CameraOptions options;
+    options.duration = std::chrono::milliseconds(500);
+    transform->setAngle(0, options);
     update();
 }
 

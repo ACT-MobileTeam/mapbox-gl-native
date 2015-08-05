@@ -98,11 +98,11 @@ public:
     void cancelTransitions();
     void setGestureInProgress(bool);
 
-    void easeTo(CameraOptions options, const Duration& = Duration::zero());
+    void easeTo(CameraOptions options);
 
     // Position
     void moveBy(double dx, double dy, const Duration& = Duration::zero());
-    void setLatLng(LatLng latLng, const Duration& = Duration::zero());
+    void setLatLng(LatLng latLng, CameraOptions options = {});
     LatLng getLatLng() const;
     void resetPosition();
 
@@ -112,7 +112,7 @@ public:
     double getScale() const;
     void setZoom(double zoom, const Duration& = Duration::zero());
     double getZoom() const;
-    void setLatLngZoom(LatLng latLng, double zoom, const Duration& = Duration::zero());
+    void setLatLngZoom(LatLng latLng, double zoom, CameraOptions options = {});
     void fitBounds(LatLngBounds bounds, EdgeInsets padding, const Duration& duration = Duration::zero());
     void fitBounds(AnnotationSegment segment, EdgeInsets padding, const Duration& duration = Duration::zero());
     void resetZoom();

@@ -23,12 +23,12 @@ public:
     // Map view
     bool resize(std::array<uint16_t, 2> size);
 
-    void easeTo(const CameraOptions options, const Duration& = Duration::zero());
+    void easeTo(const CameraOptions options);
 
     // Position
     void moveBy(double dx, double dy, const Duration& = Duration::zero());
-    void setLatLng(LatLng latLng, const Duration& = Duration::zero());
-    void setLatLngZoom(LatLng latLng, double zoom, const Duration& = Duration::zero());
+    void setLatLng(LatLng latLng, CameraOptions options = {});
+    void setLatLngZoom(LatLng latLng, double zoom, CameraOptions options = {});
     inline const LatLng getLatLng() const { return state.getLatLng(); }
 
     // Zoom
@@ -40,7 +40,7 @@ public:
 
     // Angle
     void rotateBy(double sx, double sy, double ex, double ey, const Duration& = Duration::zero());
-    void setAngle(double angle, const Duration& = Duration::zero());
+    void setAngle(double angle, CameraOptions options = {});
     void setAngle(double angle, double cx, double cy);
     double getAngle() const;
 
@@ -59,16 +59,16 @@ private:
     void _moveBy(double dx, double dy, const Duration& = Duration::zero());
     void _setScale(double scale, double cx, double cy, const Duration& = Duration::zero());
     void _setScaleXY(double new_scale, double xn, double yn, const Duration& = Duration::zero());
-    void _easeTo(const double new_scale, const double new_angle,
-                 const double xn, const double yn,
-                 const Duration& duration = Duration::zero());
-    void _setAngle(double angle, const Duration& = Duration::zero());
+    void _easeTo(CameraOptions options, const double new_scale, const double new_angle,
+                 const double xn, const double yn);
+    void _setAngle(double angle, CameraOptions options = {});
 
     View &view;
 
     TransformState state;
 
-    void startTransition(std::function<Update(double)> frame,
+    void startTransition(std::function<double(double)> easing,
+                         std::function<Update(double)> frame,
                          std::function<void()> finish,
                          const Duration& duration);
 

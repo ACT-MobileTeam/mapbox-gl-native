@@ -1478,9 +1478,11 @@ std::chrono::steady_clock::duration secondsAsDuration(float duration)
 {
     CGFloat duration = (animated ? MGLAnimationDuration : 0);
 
+    mbgl::CameraOptions options;
+    options.duration = secondsAsDuration(duration);
     _mbglMap->setLatLngZoom(MGLLatLngFromLocationCoordinate2D(coordinate),
                             fmaxf(_mbglMap->getZoom(), self.currentMinimumZoom),
-                            secondsAsDuration(duration));
+                            options);
 
     [self notifyMapChange:(animated ? mbgl::MapChangeRegionDidChangeAnimated : mbgl::MapChangeRegionDidChange)];
 }
@@ -1497,11 +1499,19 @@ std::chrono::steady_clock::duration secondsAsDuration(float duration)
 
 - (void)setCenterCoordinate:(CLLocationCoordinate2D)centerCoordinate zoomLevel:(double)zoomLevel animated:(BOOL)animated
 {
+    [self setCenterCoordinate:centerCoordinate zoomLevel:zoomLevel direction:self.direction animated:animated];
+}
+
+- (void)setCenterCoordinate:(CLLocationCoordinate2D)centerCoordinate zoomLevel:(double)zoomLevel direction:(CLLocationDirection)direction animated:(BOOL)animated
+{
     self.userTrackingMode = MGLUserTrackingModeNone;
 
     CGFloat duration = (animated ? MGLAnimationDuration : 0);
 
-    _mbglMap->setLatLngZoom(MGLLatLngFromLocationCoordinate2D(centerCoordinate), zoomLevel, secondsAsDuration(duration));
+    mbgl::CameraOptions options;
+    options.angle = direction;
+    options.duration = secondsAsDuration(duration);
+    _mbglMap->setLatLngZoom(MGLLatLngFromLocationCoordinate2D(centerCoordinate), zoomLevel, options);
 
     [self unrotateIfNeededAnimated:animated];
 
@@ -1519,9 +1529,11 @@ std::chrono::steady_clock::duration secondsAsDuration(float duration)
 
     CGFloat duration = (animated ? MGLAnimationDuration : 0);
 
+    mbgl::CameraOptions options;
+    options.duration = secondsAsDuration(duration);
     _mbglMap->setLatLngZoom(_mbglMap->getLatLng(),
                            fmaxf(zoomLevel, self.currentMinimumZoom),
-                           secondsAsDuration(duration));
+                           options);
 
     [self unrotateIfNeededAnimated:animated];
 
