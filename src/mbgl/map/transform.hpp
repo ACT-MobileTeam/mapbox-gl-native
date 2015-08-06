@@ -23,6 +23,7 @@ public:
     // Map view
     bool resize(std::array<uint16_t, 2> size);
 
+    void jumpTo(const CameraOptions options);
     void easeTo(const CameraOptions options);
 
     // Position

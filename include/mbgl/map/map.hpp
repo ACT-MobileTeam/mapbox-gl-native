@@ -98,6 +98,7 @@ public:
     void cancelTransitions();
     void setGestureInProgress(bool);
 
+    void jumpTo(CameraOptions options);
     void easeTo(CameraOptions options);
 
     // Position

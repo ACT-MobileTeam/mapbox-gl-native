@@ -54,6 +54,12 @@ bool Transform::resize(const std::array<uint16_t, 2> size) {
 
 #pragma mark - Position
 
+void Transform::jumpTo(const CameraOptions options) {
+    CameraOptions jumpOptions = options;
+    jumpOptions.duration.reset();
+    easeTo(jumpOptions);
+}
+
 void Transform::easeTo(const CameraOptions options) {
     LatLng latLng = options.center ? *options.center : getLatLng();
     double zoom = options.zoom ? *options.zoom : getZoom();

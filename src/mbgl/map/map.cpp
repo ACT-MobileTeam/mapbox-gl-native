@@ -120,6 +120,11 @@ void Map::setGestureInProgress(bool inProgress) {
 
 #pragma mark -
 
+void Map::jumpTo(CameraOptions options) {
+    transform->jumpTo(options);
+    update();
+}
+
 void Map::easeTo(CameraOptions options) {
     transform->easeTo(options);
     update();
@@ -146,7 +151,7 @@ void Map::resetPosition() {
     options.angle = 0;
     options.center = LatLng(0, 0);
     options.zoom = 0;
-    transform->easeTo(options);
+    transform->jumpTo(options);
     update(Update::Zoom);
 }
 
