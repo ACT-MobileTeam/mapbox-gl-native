@@ -137,7 +137,9 @@ void Map::moveBy(double dx, double dy, const Duration& duration) {
     update();
 }
 
-void Map::setLatLng(LatLng latLng, CameraOptions options) {
+void Map::setLatLng(LatLng latLng, const Duration& duration) {
+    CameraOptions options;
+    options.duration = duration;
     transform->setLatLng(latLng, options);
     update();
 }
@@ -181,7 +183,9 @@ double Map::getZoom() const {
     return transform->getZoom();
 }
 
-void Map::setLatLngZoom(LatLng latLng, double zoom, CameraOptions options) {
+void Map::setLatLngZoom(LatLng latLng, double zoom, const Duration& duration) {
+    CameraOptions options;
+    options.duration = duration;
     transform->setLatLngZoom(latLng, zoom, options);
     update(Update::Zoom);
 }
@@ -232,9 +236,7 @@ void Map::fitBounds(AnnotationSegment segment, EdgeInsets padding, const Duratio
     vec2<> centerPixel = (paddedNEPixel + paddedSWPixel) * 0.5;
     LatLng centerLatLng = latLngForPixel(centerPixel);
 
-    CameraOptions options;
-    options.duration = duration;
-    setLatLngZoom(centerLatLng, zoom, options);
+    setLatLngZoom(centerLatLng, zoom, duration);
 }
 
 void Map::resetZoom() {
