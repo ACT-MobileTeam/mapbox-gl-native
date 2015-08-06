@@ -310,7 +310,8 @@ void Transform::setAngle(const double new_angle, const double cx, const double c
         _moveBy(dx, dy, Duration::zero());
     }
 
-    _setAngle(new_angle);
+    CameraOptions options;
+    _setAngle(new_angle, options);
 
     if (cx >= 0 && cy >= 0) {
         _moveBy(-dx, -dy, Duration::zero());

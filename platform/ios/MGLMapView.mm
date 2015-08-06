@@ -357,7 +357,8 @@ std::chrono::steady_clock::duration secondsAsDuration(float duration)
 
     // set initial position
     //
-    _mbglMap->setLatLngZoom(mbgl::LatLng(0, 0), _mbglMap->getMinZoom());
+    mbgl::CameraOptions options;
+    _mbglMap->setLatLngZoom(mbgl::LatLng(0, 0), _mbglMap->getMinZoom(), options);
     _pendingLatitude = NAN;
     _pendingLongitude = NAN;
 

@@ -27,8 +27,8 @@ public:
 
     // Position
     void moveBy(double dx, double dy, const Duration& = Duration::zero());
-    void setLatLng(LatLng latLng, CameraOptions options = {});
-    void setLatLngZoom(LatLng latLng, double zoom, CameraOptions options = {});
+    void setLatLng(LatLng latLng, CameraOptions options);
+    void setLatLngZoom(LatLng latLng, double zoom, CameraOptions options);
     inline const LatLng getLatLng() const { return state.getLatLng(); }
 
     // Zoom
@@ -40,7 +40,7 @@ public:
 
     // Angle
     void rotateBy(double sx, double sy, double ex, double ey, const Duration& = Duration::zero());
-    void setAngle(double angle, CameraOptions options = {});
+    void setAngle(double angle, CameraOptions options);
     void setAngle(double angle, double cx, double cy);
     double getAngle() const;
 
@@ -61,7 +61,7 @@ private:
     void _setScaleXY(double new_scale, double xn, double yn, const Duration& = Duration::zero());
     void _easeTo(CameraOptions options, const double new_scale, const double new_angle,
                  const double xn, const double yn);
-    void _setAngle(double angle, CameraOptions options = {});
+    void _setAngle(double angle, CameraOptions options);
 
     View &view;
 

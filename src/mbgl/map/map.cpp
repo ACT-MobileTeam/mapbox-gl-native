@@ -142,9 +142,11 @@ LatLng Map::getLatLng() const {
 }
 
 void Map::resetPosition() {
-    transform->setAngle(0);
-    transform->setLatLng(LatLng(0, 0));
-    transform->setZoom(0);
+    CameraOptions options;
+    options.angle = 0;
+    options.center = LatLng(0, 0);
+    options.zoom = 0;
+    transform->easeTo(options);
     update(Update::Zoom);
 }
 
