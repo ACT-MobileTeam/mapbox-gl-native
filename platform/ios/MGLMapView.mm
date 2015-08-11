@@ -1513,7 +1513,7 @@ std::chrono::steady_clock::duration secondsAsDuration(float duration)
     mbgl::CameraOptions options;
     options.center = MGLLatLngFromLocationCoordinate2D(centerCoordinate);
     options.zoom = zoomLevel;
-    options.angle = -direction * M_PI / 180;
+    options.angle = MGLRadiansFromDegrees(-direction);
     if (animated)
     {
         options.duration = secondsAsDuration(MGLAnimationDuration);
@@ -1653,7 +1653,7 @@ mbgl::LatLngBounds MGLLatLngBoundsFromCoordinateBounds(MGLCoordinateBounds coord
     mbgl::CameraOptions options;
     options.center = MGLLatLngFromLocationCoordinate2D(camera.centerCoordinate);
     options.zoom = log(camera.altitude / 6.53e7) / -0.6931;
-    options.angle = -camera.heading * M_PI / 180;
+    options.angle = MGLRadiansFromDegrees(-camera.heading);
     if (animated)
     {
         options.duration = secondsAsDuration(MGLAnimationDuration);
