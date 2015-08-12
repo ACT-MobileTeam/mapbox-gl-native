@@ -442,7 +442,7 @@ void Painter::renderBackground(const StyleLayer &layer_desc) {
         patternShader->u_patternmatrix_b = matrixB;
 
         backgroundBuffer.bind();
-        patternShader->bind(0);
+        patternShader->bind(config, 0);
         spriteAtlas->bind(true);
     } else {
         Color color = properties.color;
@@ -457,7 +457,7 @@ void Painter::renderBackground(const StyleLayer &layer_desc) {
         useProgram(plainShader->program);
         plainShader->u_matrix = identityMatrix;
         plainShader->u_color = color;
-        backgroundArray.bind(*plainShader, backgroundBuffer, BUFFER_OFFSET(0));
+        backgroundArray.bind(*plainShader, backgroundBuffer, config, BUFFER_OFFSET(0));
     }
 
     config.stencilTest = false;

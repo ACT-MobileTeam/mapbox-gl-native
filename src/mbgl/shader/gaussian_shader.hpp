@@ -10,7 +10,7 @@ class GaussianShader : public Shader {
 public:
     GaussianShader();
 
-    void bind(char *offset) override;
+    void bind(gl::Config&, char *offset) override;
 
     UniformMatrix<4>              u_matrix = {"u_matrix", *this};
     Uniform<std::array<float, 2>> u_offset = {"u_offset", *this};
