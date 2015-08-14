@@ -75,7 +75,7 @@ void Transform::easeTo(const CameraOptions options) {
     state.Cc = s / util::M2PI;
     
     const double m = 1 - 1e-15;
-    const double f = std::fmin(std::fmax(std::sin(util::DEG2RAD * latLng.latitude), -m), m);
+    const double f = ::fmin(::fmax(std::sin(util::DEG2RAD * latLng.latitude), -m), m);
     
     double xn = -latLng.longitude * state.Bc;
     double yn = 0.5 * state.Cc * std::log((1 + f) / (1 - f));
@@ -200,6 +200,7 @@ void Transform::_easeTo(CameraOptions options, const double new_scale, const dou
     double scale = new_scale;
     double x = xn;
     double y = yn;
+    Update update = (scale == getScale()) ? Update::Repaint : Update::Zoom;
 
     state.constrain(scale, y);
     
@@ -247,7 +248,7 @@ void Transform::_easeTo(CameraOptions options, const double new_scale, const dou
                 state.Cc = s / util::M2PI;
                 state.angle = util::wrap(util::interpolate(startA, angle, t), -M_PI, M_PI);
                 view.notifyMapChange(MapChangeRegionIsChanging);
-                return Update::Zoom;
+                return update;
             },
             [=] {
                 state.panning = false;
@@ -363,12 +364,8 @@ void Transform::startTransition(std::function<double(double)> easing,
     transitionFinishFn = finish;
 }
 
-bool Transform::needsTransition() const {
-    return !!transitionFrameFn;
-}
-
-UpdateType Transform::updateTransitions(const TimePoint& now) {
-    return static_cast<UpdateType>(transitionFrameFn ? transitionFrameFn(now) : Update::Nothing);
+Update Transform::updateTransitions(const TimePoint& now) {
+    return transitionFrameFn ? transitionFrameFn(now) : Update::Nothing;
 }
 
 void Transform::cancelTransitions() {

@@ -98,7 +98,7 @@ void SourceInfo::parseTileJSONProperties(const rapidjson::Value& value) {
 }
 
 std::string SourceInfo::tileURL(const TileID& id, float pixelRatio) const {
-    std::string result = tiles.at((id.x + id.y) % tiles.size());
+    std::string result = tiles.at(0);
     result = util::mapbox::normalizeTileURL(result, url, type);
     result = util::replaceTokens(result, [&](const std::string &token) -> std::string {
         if (token == "z") return util::toString(std::min(id.z, static_cast<int8_t>(max_zoom)));
@@ -312,7 +312,7 @@ double Source::getZoom(const TransformState& state) const {
 int32_t Source::coveringZoomLevel(const TransformState& state) const {
     double zoom = getZoom(state);
     if (info.type == SourceType::Raster || info.type == SourceType::Video) {
-        zoom = std::round(zoom);
+        zoom = ::round(zoom);
     } else {
         zoom = std::floor(zoom);
     }
@@ -407,7 +407,7 @@ bool Source::update(MapData& data,
 
     double zoom = getZoom(transformState);
     if (info.type == SourceType::Raster || info.type == SourceType::Video) {
-        zoom = std::round(zoom);
+        zoom = ::round(zoom);
     } else {
         zoom = std::floor(zoom);
     }

@@ -713,17 +713,11 @@ std::chrono::steady_clock::duration secondsAsDuration(float duration)
 
         _mbglMap->setSourceTileCacheSize(cacheSize);
 
-        bool needsRerender = _mbglMap->renderSync();
+        _mbglMap->renderSync();
 
         [self updateUserLocationAnnotationView];
 
-        // don't nudge transitions if in the midst of a gesture.
-        if (self.pan.state       == UIGestureRecognizerStateChanged ||
-            self.pinch.state     == UIGestureRecognizerStateChanged ||
-            self.rotate.state    == UIGestureRecognizerStateChanged ||
-            self.quickZoom.state == UIGestureRecognizerStateChanged) return;
-
-        _mbglMap->nudgeTransitions(needsRerender);
+        _mbglMap->nudgeTransitions();
     }
 }
 
@@ -746,6 +740,7 @@ std::chrono::steady_clock::duration secondsAsDuration(float duration)
     {
         [self updateHeadingForDeviceOrientation];
         [self updateCompass];
+        [self updateUserLocationAnnotationView];
     }
 }
 
@@ -836,7 +831,11 @@ std::chrono::steady_clock::duration secondsAsDuration(float duration)
 {
     [self resetNorthAnimated:YES];
 
-    if (self.userTrackingMode == MGLUserTrackingModeFollowWithHeading) self.userTrackingMode = MGLUserTrackingModeFollow;
+    if (self.userTrackingMode == MGLUserTrackingModeFollowWithHeading ||
+        self.userTrackingMode == MGLUserTrackingModeFollowWithCourse)
+    {
+        self.userTrackingMode = MGLUserTrackingModeFollow;
+    }
 }
 
 - (void)touchesBegan:(__unused NS_SET_OF(UITouch *) *)touches withEvent:(__unused UIEvent *)event
@@ -2096,7 +2095,9 @@ CLLocationCoordinate2D MGLLocationCoordinate2DFromLatLng(mbgl::LatLng latLng)
 
     self.selectedAnnotation = annotation;
 
-    if (annotation.title && [self.delegate respondsToSelector:@selector(mapView:annotationCanShowCallout:)] &&
+    if ([annotation respondsToSelector:@selector(title)] &&
+        annotation.title &&
+        [self.delegate respondsToSelector:@selector(mapView:annotationCanShowCallout:)] &&
         [self.delegate mapView:self annotationCanShowCallout:annotation])
     {
         // build the callout
@@ -2196,6 +2197,29 @@ CLLocationCoordinate2D MGLLocationCoordinate2DFromLatLng(mbgl::LatLng latLng)
             [self.delegate mapView:self didDeselectAnnotation:annotation];
         }
     }
+}
+
+- (void)showAnnotations:(NS_ARRAY_OF(id <MGLAnnotation>) *)annotations animated:(BOOL)animated
+{
+    if ( ! annotations || ! annotations.count) return;
+
+    mbgl::LatLngBounds bounds;
+
+    for (id <MGLAnnotation> annotation in annotations)
+    {
+        if ([annotation conformsToProtocol:@protocol(MGLOverlay)])
+        {
+            bounds.extend(MGLLatLngBoundsFromCoordinateBounds(((id <MGLOverlay>)annotation).overlayBounds));
+        }
+        else
+        {
+            bounds.extend(MGLLatLngFromLocationCoordinate2D(annotation.coordinate));
+        }
+    }
+
+    [self setVisibleCoordinateBounds:MGLCoordinateBoundsFromLatLngBounds(bounds)
+                         edgePadding:UIEdgeInsetsMake(100, 100, 100, 100)
+                            animated:animated];
 }
 
 #pragma mark - User Location -
@@ -2302,7 +2326,8 @@ CLLocationCoordinate2D MGLLocationCoordinate2DFromLatLng(mbgl::LatLng latLng)
 {
     if (mode == _userTrackingMode) return;
 
-    if (mode == MGLUserTrackingModeFollowWithHeading && ! CLLocationCoordinate2DIsValid(self.userLocation.coordinate))
+    if ((mode == MGLUserTrackingModeFollowWithHeading || mode == MGLUserTrackingModeFollowWithCourse) &&
+        ! CLLocationCoordinate2DIsValid(self.userLocation.coordinate))
     {
         mode = MGLUserTrackingModeNone;
     }
@@ -2312,7 +2337,6 @@ CLLocationCoordinate2D MGLLocationCoordinate2DFromLatLng(mbgl::LatLng latLng)
     switch (_userTrackingMode)
     {
         case MGLUserTrackingModeNone:
-        default:
         {
             [self.locationManager stopUpdatingHeading];
 
@@ -2335,6 +2359,7 @@ CLLocationCoordinate2D MGLLocationCoordinate2DFromLatLng(mbgl::LatLng latLng)
             break;
         }
         case MGLUserTrackingModeFollowWithHeading:
+        case MGLUserTrackingModeFollowWithCourse:
         {
             self.showsUserLocation = YES;
 
@@ -2428,6 +2453,12 @@ CLLocationCoordinate2D MGLLocationCoordinate2DFromLatLng(mbgl::LatLng latLng)
         }
     }
 
+    CLLocationDirection course = self.userLocation.location.course;
+    if (course >= 0 && self.userTrackingMode == MGLUserTrackingModeFollowWithCourse)
+    {
+        _mbglMap->setBearing(course);
+    }
+    
     self.userLocationAnnotationView.haloLayer.hidden = ! CLLocationCoordinate2DIsValid(self.userLocation.coordinate) ||
         newLocation.horizontalAccuracy > 10;
 
@@ -2456,9 +2487,9 @@ CLLocationCoordinate2D MGLLocationCoordinate2DFromLatLng(mbgl::LatLng latLng)
         if ( ! _showsUserLocation) return;
     }
 
-    CLLocationDirection headingDirection = (newHeading.trueHeading > 0 ? newHeading.trueHeading : newHeading.magneticHeading);
+    CLLocationDirection headingDirection = (newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading);
 
-    if (headingDirection > 0 && self.userTrackingMode == MGLUserTrackingModeFollowWithHeading)
+    if (headingDirection >= 0 && self.userTrackingMode == MGLUserTrackingModeFollowWithHeading)
     {
         _mbglMap->setBearing(headingDirection, secondsAsDuration(MGLAnimationDuration));
     }

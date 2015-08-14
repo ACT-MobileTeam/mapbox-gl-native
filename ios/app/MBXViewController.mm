@@ -310,18 +310,22 @@ mbgl::Settings_NSUserDefaults *settings = nullptr;
 
 - (void)locateUser
 {
-    if (self.mapView.userTrackingMode == MGLUserTrackingModeNone)
-    {
-        self.mapView.userTrackingMode = MGLUserTrackingModeFollow;
+    MGLUserTrackingMode nextMode;
+    switch (self.mapView.userTrackingMode) {
+        case MGLUserTrackingModeNone:
+            nextMode = MGLUserTrackingModeFollow;
+            break;
+        case MGLUserTrackingModeFollow:
+            nextMode = MGLUserTrackingModeFollowWithHeading;
+            break;
+        case MGLUserTrackingModeFollowWithHeading:
+            nextMode = MGLUserTrackingModeFollowWithCourse;
+            break;
+        case MGLUserTrackingModeFollowWithCourse:
+            nextMode = MGLUserTrackingModeNone;
+            break;
     }
-    else if (self.mapView.userTrackingMode == MGLUserTrackingModeFollow)
-    {
-        self.mapView.userTrackingMode = MGLUserTrackingModeFollowWithHeading;
-    }
-    else
-    {
-        self.mapView.userTrackingMode = MGLUserTrackingModeNone;
-    }
+    self.mapView.userTrackingMode = nextMode;
 }
 
 #pragma mark - Destruction
@@ -402,6 +406,7 @@ mbgl::Settings_NSUserDefaults *settings = nullptr;
 - (void)mapView:(__unused MGLMapView *)mapView didChangeUserTrackingMode:(MGLUserTrackingMode)mode animated:(__unused BOOL)animated
 {
     UIImage *newButtonImage;
+    NSString *newButtonTitle;
     
     switch (mode) {
         case MGLUserTrackingModeNone:
@@ -415,8 +420,13 @@ mbgl::Settings_NSUserDefaults *settings = nullptr;
         case MGLUserTrackingModeFollowWithHeading:
             newButtonImage = [UIImage imageNamed:@"TrackingHeadingMask.png"];
             break;
+        case MGLUserTrackingModeFollowWithCourse:
+            newButtonImage = nil;
+            newButtonTitle = @"Course";
+            break;
     }
     
+    self.navigationItem.rightBarButtonItem.title = newButtonTitle;
     [UIView animateWithDuration:0.25 animations:^{
         self.navigationItem.rightBarButtonItem.image = newButtonImage;
     }];

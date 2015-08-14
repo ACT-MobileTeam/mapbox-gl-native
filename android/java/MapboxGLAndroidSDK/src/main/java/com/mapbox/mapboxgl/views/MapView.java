@@ -9,7 +9,14 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
+import android.graphics.Matrix;
 import android.graphics.PointF;
+import android.hardware.GeomagneticField;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.location.Location;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Build;
@@ -18,7 +25,9 @@ import android.support.annotation.NonNull;
 import android.support.v4.view.GestureDetectorCompat;
 import android.support.v4.view.ScaleGestureDetectorCompat;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.GestureDetector;
+import android.view.Gravity;
 import android.view.ScaleGestureDetector;
 import android.util.AttributeSet;
 import android.view.InputDevice;
@@ -28,6 +37,8 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.ZoomButtonsController;
 import com.almeros.android.multitouch.gesturedetectors.RotateGestureDetector;
 import com.almeros.android.multitouch.gesturedetectors.TwoFingerGestureDetector;
@@ -40,18 +51,24 @@ import com.mapbox.mapboxgl.annotations.Polyline;
 import com.mapbox.mapboxgl.annotations.PolylineOptions;
 import com.mapbox.mapboxgl.geometry.LatLng;
 import com.mapbox.mapboxgl.geometry.LatLngZoom;
+import com.mapzen.android.lost.api.LocationListener;
+import com.mapzen.android.lost.api.LocationRequest;
+import com.mapzen.android.lost.api.LocationServices;
+import com.mapzen.android.lost.api.LostApiClient;
 import org.apache.commons.validator.routines.UrlValidator;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 // Custom view that shows a Map
 // Based on SurfaceView as we use OpenGL ES to render
-public class MapView extends SurfaceView {
+public class MapView extends FrameLayout implements LocationListener {
 
     //
     // Static members
     //
+    private static final String TAG = "MapView";
 
     // Used for animation
     private static final long ANIMATION_DURATION = 300;
@@ -80,6 +97,7 @@ public class MapView extends SurfaceView {
     //
 
     // Used to call JNI NativeMapView
+    private SurfaceView mSurfaceView;
     private NativeMapView mNativeMapView;
 
     // Used to handle DPI scaling
@@ -101,6 +119,41 @@ public class MapView extends SurfaceView {
 
     // Holds the context
     private Context mContext;
+
+    // Used for GPS / Location
+    private boolean mIsGpsOn = false;
+    private LostApiClient mLocationClient;
+    private LocationRequest mLocationRequest;
+    private ImageView mGpsMarker;
+    private Location mGpsLocation;
+
+    public enum UserLocationTrackingMode {
+        NONE, FOLLOW, FOLLOW_BEARING;
+    }
+    private UserLocationTrackingMode userLocationTrackingMode = UserLocationTrackingMode.FOLLOW;
+
+    // Used for compass
+    private boolean mIsCompassEnabled = true;
+    private ImageView mCompassView;
+    private SensorManager mSensorManager;
+    private Sensor mSensorAccelerometer;
+    private Sensor mSensorMagneticField;
+    private CompassListener mCompassListener;
+    private float[] mValuesAccelerometer = new float[3];
+    private float[] mValuesMagneticField = new float[3];
+    private float[] mMatrixR = new float[9];
+    private float[] mMatrixI = new float[9];
+    private float[] mMatrixValues = new float[3];
+    private float mCompassBearing;
+    private boolean mCompassValid = false;
+
+    // Used for map toggle mode
+//    private FloatingActionButton trackingModeButton;
+    private long t0 = new Date().getTime();
+
+    // Used to manage Event Listeners
+    private ArrayList<OnMapChangedListener> mOnMapChangedListener;
+
 
     //
     // Properties
@@ -138,10 +191,14 @@ public class MapView extends SurfaceView {
     //
 
     // Common initialization code goes here
+    @TargetApi(16)
     private void initialize(Context context, AttributeSet attrs) {
 
         // Save the context
         mContext = context;
+
+        mSurfaceView = new SurfaceView(mContext);
+        addView(mSurfaceView);
 
         // Check if we are in Eclipse UI editor
         if (isInEditMode()) {
@@ -161,9 +218,12 @@ public class MapView extends SurfaceView {
         ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
         ActivityManager activityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
         activityManager.getMemoryInfo(memoryInfo);
-        long totalMemory = memoryInfo.totalMem;
-        mNativeMapView = new NativeMapView(this, cachePath, dataPath, apkPath, mScreenDensity,availableProcessors, totalMemory);
-
+        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            long totalMemory = memoryInfo.totalMem;
+            mNativeMapView = new NativeMapView(this, cachePath, dataPath, apkPath, mScreenDensity, availableProcessors, totalMemory);
+        } else {
+            throw new RuntimeException("Need to implement totalMemory on pre-Jelly Bean devices.");
+        }
         // Load the attributes
         TypedArray typedArray = context.obtainStyledAttributes(attrs, R.styleable.MapView, 0, 0);
         try {
@@ -196,9 +256,9 @@ public class MapView extends SurfaceView {
 
         // Register the SurfaceHolder callbacks
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.GINGERBREAD) {
-            getHolder().addCallback(new Callbacks2());
+            mSurfaceView.getHolder().addCallback(new Callbacks2());
         } else {
-            getHolder().addCallback(new Callbacks());
+            mSurfaceView.getHolder().addCallback(new Callbacks());
         }
 
         // Touch gesture detectors
@@ -223,6 +283,34 @@ public class MapView extends SurfaceView {
             boolean isConnected = (activeNetwork != null) && activeNetwork.isConnectedOrConnecting();
             onConnectivityChanged(isConnected);
         }
+
+        // Setup Location Services
+        mLocationClient = new LostApiClient.Builder(getContext()).build();
+        mLocationRequest = LocationRequest.create()
+                .setInterval(1000)
+                .setSmallestDisplacement(1)
+                .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+
+        // Setup Compass
+        mSensorManager = (SensorManager) mContext.getSystemService(Context.SENSOR_SERVICE);
+        mSensorAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        mSensorMagneticField = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        mCompassListener = new CompassListener();
+
+        mCompassView = new ImageView(mContext);
+        mCompassView.setImageDrawable(getResources().getDrawable(R.drawable.compass));
+        mCompassView.setContentDescription(getResources().getString(R.string.compassContentDescription));
+        LayoutParams lp = new FrameLayout.LayoutParams((int)(48 * mScreenDensity), (int)(48 * mScreenDensity));
+        lp.gravity = Gravity.TOP | Gravity.END;
+        int tenDp = (int)(10 * mScreenDensity);
+        lp.setMargins(tenDp, tenDp, tenDp, tenDp);
+        mCompassView.setLayoutParams(lp);
+        addView(mCompassView);
+        mCompassView.setOnClickListener(new CompassOnClickListener());
+
+        // Setup Support For Listener Tracking
+        // MapView's internal listener is setup in onCreate()
+        mOnMapChangedListener = new ArrayList<OnMapChangedListener>();
     }
 
     //
@@ -241,7 +329,7 @@ public class MapView extends SurfaceView {
 
     public Marker addMarker(MarkerOptions markerOptions) {
         Marker marker = markerOptions.getMarker();
-        Long id = mNativeMapView.addMarker(marker);
+        long id = mNativeMapView.addMarker(marker);
         marker.setId(id);        // the annotation needs to know its id
         marker.setMapView(this); // the annotation needs to know which map view it is in
         annotations.add(marker);
@@ -250,7 +338,7 @@ public class MapView extends SurfaceView {
 
     public Polyline addPolyline(PolylineOptions polylineOptions) {
         Polyline polyline = polylineOptions.getPolyline();
-        Long id = mNativeMapView.addPolyline(polyline);
+        long id = mNativeMapView.addPolyline(polyline);
         polyline.setId(id);
         polyline.setMapView(this);
         annotations.add(polyline);
@@ -259,7 +347,7 @@ public class MapView extends SurfaceView {
 
     public Polygon addPolygon(PolygonOptions polygonOptions) {
         Polygon polygon = polygonOptions.getPolygon();
-        Long id = mNativeMapView.addPolygon(polygon);
+        long id = mNativeMapView.addPolygon(polygon);
         polygon.setId(id);
         polygon.setMapView(this);
         annotations.add(polygon);
@@ -274,7 +362,7 @@ public class MapView extends SurfaceView {
 
         long[] ids = mNativeMapView.addPolygons(polygons);
 
-        for(int i=0; i<polygons.size(); i++) {
+        for(int i=0; i < polygons.size(); i++) {
             polygons.get(i).setId(ids[i]);
             polygons.get(i).setMapView(this);
             annotations.add(polygons.get(i));
@@ -294,13 +382,9 @@ public class MapView extends SurfaceView {
 
     public void removeAnnotations() {
         long[] ids = new long[annotations.size()];
-        for(int i=0; i<annotations.size(); i++) {
-            Long id = annotations.get(i).getId();
-            if(id == null) {
-                ids[i] = -1;
-            } else {
-                ids[i] = id;
-            }
+        for(int i = 0; i < annotations.size(); i++) {
+            long id = annotations.get(i).getId();
+            ids[i] = id;
         }
         mNativeMapView.removeAnnotations(ids);
     }
@@ -417,6 +501,14 @@ public class MapView extends SurfaceView {
         mNativeMapView.toggleCollisionDebug();
     }
 
+    public UserLocationTrackingMode getUserLocationTrackingMode() {
+        return userLocationTrackingMode;
+    }
+
+    public void setUserLocationTrackingMode(UserLocationTrackingMode userLocationTrackingMode) {
+        this.userLocationTrackingMode = userLocationTrackingMode;
+    }
+
     public boolean isFullyLoaded() {
         return mNativeMapView.isFullyLoaded();
     }
@@ -490,11 +582,12 @@ public class MapView extends SurfaceView {
     }
 
     public LatLng fromScreenLocation(PointF point) {
-        return mNativeMapView.latLngForPixel(point);
+        return mNativeMapView.latLngForPixel(new PointF(point.x / mScreenDensity, point.y / mScreenDensity));
     }
 
     public PointF toScreenLocation(LatLng location) {
-        return mNativeMapView.pixelForLatLng(location);
+        PointF point = mNativeMapView.pixelForLatLng(location);
+        return new PointF(point.x * mScreenDensity, point.y * mScreenDensity);
     }
 
     //
@@ -524,6 +617,13 @@ public class MapView extends SurfaceView {
 
         mNativeMapView.initializeDisplay();
         mNativeMapView.initializeContext();
+
+        addOnMapChangedListener(new OnMapChangedListener() {
+            @Override
+            public void onMapChanged() {
+                updateMap();
+            }
+        });
     }
 
     // Called when we need to save instance state
@@ -582,7 +682,7 @@ public class MapView extends SurfaceView {
     }
 
     public void onSizeChanged(int width, int height, int oldw, int oldh) {
-        mNativeMapView.resizeView((int)(width / mScreenDensity), (int)(height / mScreenDensity));
+        mNativeMapView.resizeView((int) (width / mScreenDensity), (int) (height / mScreenDensity));
     }
 
     // This class handles SurfaceHolder callbacks
@@ -693,6 +793,7 @@ public class MapView extends SurfaceView {
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 // First pointer down
+                mNativeMapView.setGestureInProgress(true);
                 break;
 
             case MotionEvent.ACTION_POINTER_DOWN:
@@ -709,6 +810,7 @@ public class MapView extends SurfaceView {
                 long tapInterval = event.getEventTime() - event.getDownTime();
                 boolean isTap = tapInterval <= ViewConfiguration.getTapTimeout();
                 boolean inProgress = mRotateGestureDetector.isInProgress() || mScaleGestureDetector.isInProgress();
+                mNativeMapView.setGestureInProgress(false);
 
                 if (mTwoTap && isTap && !inProgress) {
                     PointF focalPoint = TwoFingerGestureDetector.determineFocalPoint(event);
@@ -722,6 +824,7 @@ public class MapView extends SurfaceView {
 
             case MotionEvent.ACTION_CANCEL:
                 mTwoTap = false;
+                mNativeMapView.setGestureInProgress(false);
                 break;
         }
 
@@ -838,7 +941,6 @@ public class MapView extends SurfaceView {
             }
 
             mBeginTime = detector.getEventTime();
-
             return true;
         }
 
@@ -1288,22 +1390,37 @@ public class MapView extends SurfaceView {
         post(new Runnable() {
             @Override
             public void run() {
-                boolean inProgress = mRotateGestureDetector.isInProgress() || mScaleGestureDetector.isInProgress();
-                mNativeMapView.invalidate(inProgress);
+                mNativeMapView.invalidate();
             }
         });
     }
 
 
+    /**
+     * Defines callback for events OnMapChange
+     */
     public interface OnMapChangedListener {
         void onMapChanged();
     }
 
-    private OnMapChangedListener mOnMapChangedListener;
+    /**
+     * Add an OnMapChangedListner
+     * @param listener Listener to add
+     */
+    public void addOnMapChangedListener(@NonNull OnMapChangedListener listener) {
+        if (listener != null) {
+            mOnMapChangedListener.add(listener);
+        }
+    }
 
-    // Adds a listener for onMapChanged
-    public void setOnMapChangedListener(OnMapChangedListener listener) {
-        mOnMapChangedListener = listener;
+    /**
+     * Remove an OnMapChangedListener
+     * @param listener Listener to remove
+     */
+    public void removeOnMapChangedListener(@NonNull OnMapChangedListener listener) {
+        if (listener != null) {
+            mOnMapChangedListener.remove(listener);
+        }
     }
 
     // Called when the map view transformation has changed
@@ -1314,7 +1431,9 @@ public class MapView extends SurfaceView {
             post(new Runnable() {
                 @Override
                 public void run() {
-                    mOnMapChangedListener.onMapChanged();
+                    for (OnMapChangedListener listener : mOnMapChangedListener) {
+                        listener.onMapChanged();
+                    }
                 }
             });
         }
@@ -1341,6 +1460,248 @@ public class MapView extends SurfaceView {
                     mOnFpsChangedListener.onFpsChanged(fps);
                 }
             });
+        }
+    }
+
+    // Google Maps Inspired API
+
+    /**
+     * Gets the status of the my-location layer.
+     * @return True if the my-location layer is enabled, false otherwise.
+     */
+    public final boolean isMyLocationEnabled () {
+        return mIsGpsOn;
+    }
+
+    /**
+     * Enables or disables the my-location layer.
+     * While enabled, the my-location layer continuously draws an indication of a user's current
+     * location and bearing, and displays UI controls that allow a user to interact with their
+     * location (for example, to enable or disable camera tracking of their location and bearing).
+     * @param enabled True to enable; false to disable.
+     */
+    public final void setMyLocationEnabled (boolean enabled) {
+        toggleGps(enabled);
+    }
+
+    /**
+     * Returns the currently displayed user location, or null if there is no location data available.
+     * @return The currently displayed user location.
+     */
+    public final Location getMyLocation () {
+        return mGpsLocation;
+    }
+
+    /**
+     * Enabled / Disable GPS location updates along with updating the UI
+     * @param enableGps true if GPS is to be enabled, false if GPS is to be disabled
+     */
+    private void toggleGps(boolean enableGps) {
+
+        if (enableGps) {
+            if (!mIsGpsOn) {
+                mIsGpsOn = true;
+                mGpsLocation = null;
+                mLocationClient.connect();
+                updateLocation(LocationServices.FusedLocationApi.getLastLocation());
+                LocationServices.FusedLocationApi.requestLocationUpdates(mLocationRequest, this);
+                mSensorManager.registerListener(mCompassListener, mSensorAccelerometer, SensorManager.SENSOR_DELAY_UI);
+                mSensorManager.registerListener(mCompassListener, mSensorMagneticField, SensorManager.SENSOR_DELAY_UI);
+            }
+        } else {
+            if (mIsGpsOn) {
+                mIsGpsOn = false;
+                LocationServices.FusedLocationApi.removeLocationUpdates(this);
+                mLocationClient.disconnect();
+                mGpsLocation = null;
+                mSensorManager.unregisterListener(mCompassListener, mSensorAccelerometer);
+                mSensorManager.unregisterListener(mCompassListener, mSensorMagneticField);
+            }
+        }
+        updateMap();
+    }
+
+    /**
+     * Gets whether the compass is enabled/disabled.
+     * @return true if the compass is enabled; false if the compass is disabled.
+     */
+    public boolean isCompassEnabled () {
+        return mIsCompassEnabled;
+    }
+
+    /**
+     * Enables or disables the compass. The compass is an icon on the map that indicates the
+     * direction of north on the map. If enabled, it is only shown when the camera is tilted or
+     * rotated away from its default orientation (tilt of 0 and a bearing of 0). When a user clicks
+     * the compass, the camera orients itself to its default orientation and fades away shortly
+     * after. If disabled, the compass will never be displayed.
+     *
+     * By default, the compass is enabled
+     * @param enabled true to enable the compass; false to disable the compass.
+     */
+    public void setCompassEnabled (boolean enabled) {
+        // Set value
+        this.mIsCompassEnabled = enabled;
+
+        // Toggle UI
+        if (mIsCompassEnabled && !mCompassView.isShown()) {
+            mCompassView.setVisibility(View.VISIBLE);
+        } else if (!mIsCompassEnabled) {
+            mCompassView.setVisibility(View.GONE);
+        }
+
+        // Update Map
+        updateMap();
+    }
+
+    // This class handles sensor updates to calculate compass bearing
+    private class CompassListener implements SensorEventListener {
+
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            switch (event.sensor.getType()) {
+                case Sensor.TYPE_ACCELEROMETER:
+                    System.arraycopy(event.values, 0, mValuesAccelerometer, 0, 3);
+                    break;
+                case Sensor.TYPE_MAGNETIC_FIELD:
+                    System.arraycopy(event.values, 0, mValuesMagneticField, 0, 3);
+                    break;
+            }
+
+            boolean valid = SensorManager.getRotationMatrix(mMatrixR, mMatrixI,
+                    mValuesAccelerometer,
+                    mValuesMagneticField);
+
+            if (valid) {
+                SensorManager.getOrientation(mMatrixR, mMatrixValues);
+                //mAzimuthRadians.putValue(mMatrixValues[0]);
+                //mAzimuth = Math.toDegrees(mAzimuthRadians.getAverage());
+
+                Location mGpsLocation = getMyLocation();
+                if (mGpsLocation != null) {
+                    GeomagneticField geomagneticField = new GeomagneticField(
+                            (float) mGpsLocation.getLatitude(),
+                            (float) mGpsLocation.getLongitude(),
+                            (float) mGpsLocation.getAltitude(),
+                            System.currentTimeMillis());
+                    mCompassBearing = (float) Math.toDegrees(mMatrixValues[0]) + geomagneticField.getDeclination();
+                    mCompassValid = true;
+                }
+            }
+
+            updateMap();
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+            // TODO: ignore unreliable stuff
+        }
+    }
+
+    // Called when someone presses the compass
+    private class CompassOnClickListener implements View.OnClickListener {
+
+        @Override
+        public void onClick(View view) {
+            resetNorth();
+        }
+
+    }
+
+    /**
+     * LOST's LocationListener Callback
+     * @param location New Location
+     */
+    @Override
+    public void onLocationChanged(Location location) {
+        Log.i(TAG, "onLocationChanged(): " + location);
+        updateLocation(location);
+    }
+
+    // Handles location updates from GPS
+    private void updateLocation(Location location) {
+        if (location != null) {
+            mGpsLocation = location;
+            updateMap();
+        }
+    }
+
+    // Rotates an ImageView - does not work if the ImageView has padding, use margins
+    private void rotateImageView(ImageView imageView, float angle) {
+        Matrix matrix = new Matrix();
+        matrix.setScale((float) imageView.getWidth() / (float) imageView.getDrawable().getIntrinsicWidth(), (float) imageView.getHeight() / (float) imageView.getDrawable().getIntrinsicHeight());
+        matrix.postRotate(angle, (float) imageView.getWidth() / 2.0f, (float) imageView.getHeight() / 2.0f);
+        imageView.setImageMatrix(matrix);
+        imageView.setScaleType(ImageView.ScaleType.MATRIX);
+    }
+
+    // Updates the UI to match the current map's position
+    private void updateMap() {
+        // Using direct access to mIsCompassEnabled instead of isCompassEnabled() for
+        // small performance boost as this method is called rapidly.
+        if (mIsCompassEnabled) {
+            rotateImageView(mCompassView, (float) getDirection());
+        }
+
+        if (isMyLocationEnabled() && mGpsLocation != null) {
+            if (mGpsMarker == null) {
+                // Setup User Location UI
+                // NOTE: mIsGpsOn == false to begin with
+                mGpsMarker = new ImageView(getContext());
+                mGpsMarker.setImageResource(R.drawable.location_marker);
+                addView(mGpsMarker);
+            }
+
+            mGpsMarker.setVisibility(View.VISIBLE);
+            LatLng coordinate = new LatLng(mGpsLocation);
+            PointF screenLocation = toScreenLocation(coordinate);
+
+            float iconSize = 27.0f * mScreenDensity;
+            // Update Location
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams((int) iconSize, (int) iconSize);
+            lp.leftMargin = (int) (screenLocation.x - iconSize / 2.0f);
+            lp.topMargin = getHeight() - (int) (screenLocation.y + iconSize / 2.0f);
+            mGpsMarker.setLayoutParams(lp);
+            rotateImageView(mGpsMarker, 0.0f);
+            mGpsMarker.requestLayout();
+
+            // Update direction if tracking mode
+            if(userLocationTrackingMode == UserLocationTrackingMode.FOLLOW_BEARING && mCompassValid){
+                // TODO need to do proper filtering (see branch filter-compass) or else map will lock up because of all the compass events
+                long t = new Date().getTime();
+                if((t-t0)>1000){
+                    t0 = t;
+                    setDirection(-mCompassBearing, true);
+                }
+            }
+
+/*
+            // TODO - Too much overhead on main thread.  Needs to be refactored before it
+            // can be re-enabled
+            // Update map position if NOT in NONE mode
+            if (userLocationTrackingMode != UserLocationTrackingMode.NONE) {
+                setCenterCoordinate(new LatLng(mGpsLocation));
+            }
+*/
+
+/*
+            // Used For User Location Bearing UI
+            if (mGpsLocation.hasBearing() || mCompassValid) {
+                mGpsMarker.setImageResource(R.drawable.direction_arrow);
+                float iconSize = 54.0f * mScreenDensity;
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams((int) iconSize, (int) iconSize);
+                lp.leftMargin = (int) (screenLocation.x - iconSize / 2.0f);
+                lp.topMargin = mMapFrameLayout.getHeight() - (int) (screenLocation.y + iconSize / 2.0f);
+                mGpsMarker.setLayoutParams(lp);
+                float bearing = mGpsLocation.hasBearing() ? mGpsLocation.getBearing() : mCompassBearing;
+                rotateImageView(mGpsMarker, bearing);
+                mGpsMarker.requestLayout();
+            }
+*/
+        } else {
+            if (mGpsMarker != null) {
+                mGpsMarker.setVisibility(View.INVISIBLE);
+            }
         }
     }
 }

@@ -155,6 +155,13 @@ IB_DESIGNABLE
 *   @param animated Specify `YES` to animate the change by smoothly scrolling and zooming or `NO` to immediately display the given bounds. */
 - (void)setVisibleCoordinates:(CLLocationCoordinate2D *)coordinates count:(NSUInteger)count edgePadding:(UIEdgeInsets)insets animated:(BOOL)animated;
 
+/** Sets the visible region so that the map displays the specified annotations.
+*
+*   Calling this method updates the value in the visibleCoordinateBounds property and potentially other properties to reflect the new map region.
+*   @param annotations The annotations that you want to be visible in the map.
+*   @param animated `YES` if you want the map region change to be animated, or `NO` if you want the map to display the new region immediately without animations. */
+- (void)showAnnotations:(NS_ARRAY_OF(id <MGLAnnotation>) *)annotations animated:(BOOL)animated;
+
 /** The heading of the map (measured in degrees) relative to true north. 
 *
 *   The value `0` means that the top edge of the map view corresponds to true north. The value `90` means the top of the map is pointing due east. The value `180` means the top of the map points due south, and so on. */
@@ -422,13 +429,24 @@ IB_DESIGNABLE
 
 // Responding to Map Position Changes
 
-// TODO
+/** Tells the delegate that the region displayed by the map view is about to change.
+ *
+ *   This method is called whenever the currently displayed map region will start changing.
+ *   @param mapView The map view whose visible region will change.
+ *   @param animated Whether the change will cause an animated effect on the map. */
 - (void)mapView:(MGLMapView *)mapView regionWillChangeAnimated:(BOOL)animated;
 
-// TODO
+/** Tells the delegate that the region displayed by the map view is changing.
+ *
+ *   This method is called whenever the currently displayed map region changes. During movement, this method may be called many times to report updates to the map position. Therefore, your implementation of this method should be as lightweight as possible to avoid affecting performance.
+ *   @param mapView The map view whose visible region is changing. */
 - (void)mapViewRegionIsChanging:(MGLMapView *)mapView;
 
-// TODO
+/** Tells the delegate that the region displayed by the map view just changed.
+ *
+ *   This method is called whenever the currently displayed map region has finished changing.
+ *   @param mapView The map view whose visible region changed.
+ *   @param animated Whether the change caused an animated effect on the map. */
 - (void)mapView:(MGLMapView *)mapView regionDidChangeAnimated:(BOOL)animated;
 
 #pragma mark - Loading the Map Data
@@ -476,7 +494,7 @@ IB_DESIGNABLE
 
 /** Tells the delegate that the location of the user was updated.
 *
-*   While the showsUserLocation property is set to `YES`, this method is called whenever a new location update is received by the map view. This method is also called if the map view’s user tracking mode is set to MGLUserTrackingModeFollowWithHeading and the heading changes.
+*   While the showsUserLocation property is set to `YES`, this method is called whenever a new location update is received by the map view. This method is also called if the map view’s user tracking mode is set to MGLUserTrackingModeFollowWithHeading and the heading changes, or if it is set to MGLUserTrackingModeFollowWithCourse and the course changes.
 *
 *   This method is not called if the application is currently running in the background. If you want to receive location updates while running in the background, you must use the Core Location framework.
 *
